@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "natalie_clarius@yahoo.de",
+                "Name": "Natalie Clarius"
+            }
+        ],
+        "Description": "Adds space around windows touching a screen edge or other window",
+        "EnabledByDefault": true,
+        "Icon": "preferences-system-windows",
+        "Id": "tilegaps",
+        "License": "GPLv3.0",
+        "Name": "Window Gaps",
+        "Version": "9.0"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}
