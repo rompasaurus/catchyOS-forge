@@ -67,29 +67,29 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/sg input -c "/usr/bin/python3 $HOME/.local/bin/mouse-workspace-swipe.py"
+ExecStart=/usr/bin/python3 $HOME/.local/bin/mouse-workspace-swipe.py
 Restart=on-failure
 RestartSec=3
+# Import the DBus session so qdbus6 can talk to KWin
+Environment=QT_QPA_PLATFORM=wayland
 
 [Install]
 WantedBy=graphical-session.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable mouse-workspace-swipe.service
-log "Systemd service enabled."
+systemctl --user enable --now mouse-workspace-swipe.service
+log "Systemd service enabled and started."
 
 # ─── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
-log "Easy Swipe installed!"
+log "Easy Swipe installed and started!"
 echo ""
-echo "  Gestures (hold mouse back button + move):"
-echo "    Swipe right → next desktop (creates new one if on last)"
-echo "    Swipe left  → previous desktop"
-echo "    Swipe up    → KDE Overview"
-echo "    Swipe down  → App Dashboard (fullscreen app grid)"
-echo "    Click only  → normal back button"
+echo "  Gestures:"
+echo "    Back + swipe right → next desktop (creates new one if on last)"
+echo "    Back + swipe left  → previous desktop"
+echo "    Back click (no swipe) → Overview (desktops & apps)"
 echo ""
-warn "Log out and back in for input group permissions, then:"
-echo "  systemctl --user start mouse-workspace-swipe.service"
+warn "If this is your first time, log out and back in for input group permissions."
+echo "  Check logs: journalctl --user -u mouse-workspace-swipe -f"
