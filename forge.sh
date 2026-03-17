@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # catchyOS-forge — Master installer for CachyOS (Arch).
-# Installs Docker Desktop, JetBrains Toolbox, SMB mounts,
-# CLI essentials, Zsh config, and Easy Swipe mouse gestures.
+# Full system setup: Docker, JetBrains, SMB, CLI tools, Zsh,
+# software selection (browsers, IDEs, media, gaming), CAC, and more.
 #
-# Usage: bash forge.sh [--all | --docker | --jetbrains | --smb | --cli | --zsh | --swipe]
+# Usage: bash forge.sh [--all | --docker | --jetbrains | --software | --cac | ...]
 #        bash forge.sh              (interactive menu)
 #
 set -euo pipefail
@@ -34,9 +34,10 @@ show_banner() {
 
 run_script() {
     local script="$SCRIPT_DIR/scripts/$1"
+    shift
     if [ -f "$script" ]; then
         echo ""
-        bash "$script"
+        bash "$script" "$@"
         echo ""
     else
         err "Script not found: $script"
@@ -47,6 +48,7 @@ run_script() {
 show_menu() {
     echo -e "${BOLD}Select what to install:${NC}"
     echo ""
+    echo -e "  ${BOLD}── System Setup ──${NC}"
     echo "   1) Docker Desktop        (Docker Engine + Desktop GUI)"
     echo "   2) JetBrains Toolbox     (All JetBrains IDEs)"
     echo "   3) SMB Mounts            (//dookintel shares via fstab)"
@@ -56,10 +58,16 @@ show_menu() {
     echo "   7) Tailscale             (VPN mesh network)"
     echo "   8) Taskbar Patch         (Uniform light gray indicator)"
     echo "   9) Xbox BT Controller    (xpadneo driver for Steam)"
-    echo "  10) All of the above"
+    echo ""
+    echo -e "  ${BOLD}── Software & Security ──${NC}"
+    echo "  10) Software Selection    (Browsers, IDEs, Media, Gaming, ...)"
+    echo "  11) CAC Smart Card        (DoD CAC reader for Chrome)"
+    echo ""
+    echo -e "  ${BOLD}── Batch ──${NC}"
+    echo "  12) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-10]: " choice
+    read -rp "Choice [0-12]: " choice
     echo ""
 
     case "$choice" in
@@ -72,7 +80,9 @@ show_menu() {
         7)  run_script "setup-tailscale.sh" ;;
         8)  run_script "patch-taskbar-indicator.sh" ;;
         9)  run_script "setup-xbox-bt-controller.sh" ;;
-        10) run_all ;;
+        10) run_script "install-software.sh" ;;
+        11) run_script "setup-cac.sh" ;;
+        12) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -89,6 +99,8 @@ run_all() {
     run_script "setup-tailscale.sh"
     run_script "patch-taskbar-indicator.sh"
     run_script "setup-xbox-bt-controller.sh"
+    run_script "install-software.sh" "--all"
+    run_script "setup-cac.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -115,6 +127,8 @@ for arg in "$@"; do
         --tailscale) run_script "setup-tailscale.sh" ;;
         --taskbar)   run_script "patch-taskbar-indicator.sh" ;;
         --xbox)      run_script "setup-xbox-bt-controller.sh" ;;
+        --software)  run_script "install-software.sh" ;;
+        --cac)       run_script "setup-cac.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -129,6 +143,8 @@ for arg in "$@"; do
             echo "  --tailscale  Tailscale VPN"
             echo "  --taskbar    Uniform light gray taskbar indicator"
             echo "  --xbox       Xbox Bluetooth controller (xpadneo)"
+            echo "  --software   Software selection (browsers, IDEs, media, etc.)"
+            echo "  --cac        CAC smart card setup for Chrome"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
