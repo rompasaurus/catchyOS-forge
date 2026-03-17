@@ -1,27 +1,23 @@
 /*
 KWin Script Window Gaps — Plasma 6 port
 Originally (C) 2021-2022 Natalie Clarius <natalie_clarius@yahoo.de>
-Ported to KWin 6 API
+Ported to KWin 6 API with automatic panel detection
 GNU General Public License v3.0
 */
 
 ///////////////////////
 // configuration
 ///////////////////////
-const gap = {
-    left:   readConfig("gapLeft",   16),
-    right:  readConfig("gapRight",  16),
-    top:    readConfig("gapTop",    16),
-    bottom: readConfig("gapBottom", 16),
-    mid:    readConfig("gapMid",    16)
-};
 
-const panels = {
-    left:   readConfig("panelLeft",   false),
-    right:  readConfig("panelRight",  false),
-    top:    readConfig("panelTop",    false),
-    bottom: readConfig("panelBottom", false),
-};
+// Base gap size (applied on all edges, all monitors)
+const baseGap = readConfig("gapBase", 16);
+// Extra padding around panels (on top of panel thickness + floating gap)
+const panelPaddingTop    = readConfig("panelPaddingTop", -10);
+const panelPaddingBottom = readConfig("panelPaddingBottom", 30);
+const panelPaddingLeft   = readConfig("panelPaddingLeft", 10);
+const panelPaddingRight  = readConfig("panelPaddingRight", 10);
+// Gap between adjacent windows
+const midGap = readConfig("gapMid", 16);
 
 const config = {
     includeMaximized: readConfig("includeMaximized", false),
@@ -36,15 +32,10 @@ function debug(...args) {
     if (debugMode) console.debug("tilegaps:", ...args);
 }
 
-debug("initializing");
-debug("gaps (l/r/t/b/mid):", gap.left, gap.right, gap.top, gap.bottom, gap.mid);
-debug("panels (l/r/t/b):", panels.left, panels.right, panels.top, panels.bottom);
-
 ///////////////////////
 // KWin 6 compat
 ///////////////////////
 
-// KWin 6 renamed clientList -> windowList, clientAdded -> windowAdded, etc.
 const getWindowList = workspace.windowList
     ? () => workspace.windowList()
     : () => workspace.clientList();
@@ -52,8 +43,6 @@ const getWindowList = workspace.windowList
 const windowAddedSignal = workspace.windowAdded || workspace.clientAdded;
 
 const getArea = (win) => {
-    // KWin 6: workspace.clientArea(type, window, desktop)
-    // Some builds use the output object, some use the window
     try {
         return workspace.clientArea(KWin.MaximizeArea, win.output, win.desktops[0] || workspace.currentDesktop);
     } catch(e) {
@@ -64,6 +53,105 @@ const getArea = (win) => {
         }
     }
 };
+
+const getFullArea = (win) => {
+    try {
+        return workspace.clientArea(KWin.FullScreenArea, win.output, win.desktops[0] || workspace.currentDesktop);
+    } catch(e) {
+        try {
+            return workspace.clientArea(KWin.FullScreenArea, win);
+        } catch(e2) {
+            return workspace.clientArea(6, win);
+        }
+    }
+};
+
+///////////////////////
+// panel detection
+///////////////////////
+
+// Cache panel gaps per output, refreshed when docks change
+var panelGapCache = {};
+
+function detectPanelGaps(win) {
+    let fullArea = getFullArea(win);
+
+    // Use the screen's full area coordinates as a unique cache key
+    let outputKey = [fullArea.x, fullArea.y, fullArea.width, fullArea.height].join(",");
+
+    if (panelGapCache[outputKey]) return panelGapCache[outputKey];
+
+    let maxArea = getArea(win);
+
+    // Struts: space already reserved by panels that KWin accounts for
+    let strutTop    = maxArea.y - fullArea.y;
+    let strutBottom = (fullArea.y + fullArea.height) - (maxArea.y + maxArea.height);
+    let strutLeft   = maxArea.x - fullArea.x;
+    let strutRight  = (fullArea.x + fullArea.width) - (maxArea.x + maxArea.width);
+
+    // Scan dock windows (panels) — use geometry overlap to match to this screen
+    let windows = getWindowList();
+    let dockTop = 0, dockBottom = 0, dockLeft = 0, dockRight = 0;
+
+    for (let i = 0; i < windows.length; i++) {
+        let w = windows[i];
+        if (!w || !w.dock) continue;
+
+        let dg = w.frameGeometry;
+
+        // Check if this dock overlaps with this screen's full area
+        let overlapX = dg.x < (fullArea.x + fullArea.width) && (dg.x + dg.width) > fullArea.x;
+        let overlapY = dg.y < (fullArea.y + fullArea.height) && (dg.y + dg.height) > fullArea.y;
+        if (!overlapX || !overlapY) continue;
+
+        let isHorizontal = dg.width > dg.height;
+        let isVertical   = dg.height > dg.width;
+
+        if (isHorizontal) {
+            let panelCenter = dg.y + dg.height / 2;
+            let screenCenter = fullArea.y + fullArea.height / 2;
+            if (panelCenter < screenCenter) {
+                let needed = (dg.y + dg.height) - fullArea.y;
+                dockTop = Math.max(dockTop, needed);
+            } else {
+                let needed = (fullArea.y + fullArea.height) - dg.y;
+                dockBottom = Math.max(dockBottom, needed);
+            }
+        } else if (isVertical) {
+            let panelCenter = dg.x + dg.width / 2;
+            let screenCenter = fullArea.x + fullArea.width / 2;
+            if (panelCenter < screenCenter) {
+                let needed = (dg.x + dg.width) - fullArea.x;
+                dockLeft = Math.max(dockLeft, needed);
+            } else {
+                let needed = (fullArea.x + fullArea.width) - dg.x;
+                dockRight = Math.max(dockRight, needed);
+            }
+        }
+    }
+
+    // For edges with panels: use base gap + panel padding (panel already pushes
+    // the window inward via its thickness, we just add breathing room)
+    // For edges without panels: just use base gap
+    let result = {
+        left:   Math.max(0, baseGap + (dockLeft   > strutLeft   ? panelPaddingLeft   : 0)),
+        right:  Math.max(0, baseGap + (dockRight  > strutRight  ? panelPaddingRight  : 0)),
+        top:    Math.max(0, baseGap + (dockTop    > strutTop    ? panelPaddingTop    : 0)),
+        bottom: Math.max(0, baseGap + (dockBottom > strutBottom ? panelPaddingBottom : 0)),
+        mid:    midGap,
+    };
+
+    debug("panel gaps for", outputKey, JSON.stringify(result),
+          "struts:", strutTop, strutRight, strutBottom, strutLeft,
+          "docks:", dockTop, dockRight, dockBottom, dockLeft);
+
+    panelGapCache[outputKey] = result;
+    return result;
+}
+
+function invalidatePanelCache() {
+    panelGapCache = {};
+}
 
 ///////////////////////
 // block re-entry
@@ -79,10 +167,17 @@ windowAddedSignal.connect(onAdded);
 
 function onAdded(win) {
     if (!win) return;
+
+    // If a dock/panel is added, invalidate cache and re-gap everything
+    if (win.dock) {
+        invalidatePanelCache();
+        applyGapsAll();
+        return;
+    }
+
     debug("added", win.caption);
     applyGaps(win);
 
-    // KWin 6 signals
     const connectSig = (sig, label) => {
         if (sig) sig.connect(() => {
             debug(label, win.caption);
@@ -109,7 +204,6 @@ function applyGapsAll() {
     getWindowList().forEach(win => applyGaps(win));
 }
 
-// Re-apply on layout changes
 const layoutSignals = [
     workspace.currentDesktopChanged,
     workspace.desktopPresenceChanged,
@@ -121,7 +215,12 @@ const layoutSignals = [
     workspace.virtualScreenGeometryChanged,
 ];
 layoutSignals.forEach(sig => {
-    if (sig) sig.connect(applyGapsAll);
+    if (sig) {
+        sig.connect(() => {
+            invalidatePanelCache();
+            applyGapsAll();
+        });
+    }
 });
 
 ///////////////////////
@@ -148,10 +247,10 @@ function isMaximized(win) {
 
 function applyGapsArea(win) {
     let area = getArea(win);
-    let grid = getGrid(win, area);
+    let gap = detectPanelGaps(win);
+    let grid = getGrid(win, area, gap);
     let anchored = {left: false, right: false, top: false, bottom: false};
 
-    // KWin 6: frameGeometry is a QRect, copy its properties
     let fg = win.frameGeometry;
     let gridded = {x: fg.x, y: fg.y, width: fg.width, height: fg.height};
     let edged   = {x: fg.x, y: fg.y, width: fg.width, height: fg.height};
@@ -221,29 +320,25 @@ function applyGapsWindows(win1) {
         let w2 = {x: fg2.x, y: fg2.y, width: fg2.width, height: fg2.height,
                   left: fg2.x, right: fg2.x + fg2.width, top: fg2.y, bottom: fg2.y + fg2.height};
 
-        // Left edge of win1 near right edge of win2
-        if (nearWindow(w1.left, w2.right, gap.mid) && overlapVer(w1, w2)) {
+        if (nearWindow(w1.left, w2.right, midGap) && overlapVer(w1, w2)) {
             let diff = w1.left - w2.right;
             w1.x = w1.x - halfL(diff) + halfGapU();
             w1.width = w1.width + halfL(diff) - halfGapU();
             w2.width = w2.width + halfU(diff) - halfGapL();
         }
-        // Right edge of win1 near left edge of win2
-        if (nearWindow(w2.left, w1.right, gap.mid) && overlapVer(w1, w2)) {
+        if (nearWindow(w2.left, w1.right, midGap) && overlapVer(w1, w2)) {
             let diff = w2.left - (w1.right + 1);
             w1.width = w1.width + halfU(diff) - halfGapL();
             w2.x = w2.x - halfL(diff) + halfGapU();
             w2.width = w2.width + halfL(diff) - halfGapU();
         }
-        // Top edge of win1 near bottom edge of win2
-        if (nearWindow(w1.top, w2.bottom, gap.mid) && overlapHor(w1, w2)) {
+        if (nearWindow(w1.top, w2.bottom, midGap) && overlapHor(w1, w2)) {
             let diff = w1.top - w2.bottom;
             w1.y = w1.y - halfL(diff) + halfGapU();
             w1.height = w1.height + halfL(diff) - halfGapU();
             w2.height = w2.height + halfU(diff) - halfGapL();
         }
-        // Bottom edge of win1 near top edge of win2
-        if (nearWindow(w2.top, w1.bottom, gap.mid) && overlapHor(w1, w2)) {
+        if (nearWindow(w2.top, w1.bottom, midGap) && overlapHor(w1, w2)) {
             let diff = w2.top - (w1.bottom + 1);
             w1.height = w1.height + halfU(diff) - halfGapL();
             w2.y = w2.y - halfL(diff) + halfGapU();
@@ -265,12 +360,11 @@ function applyGapsWindows(win1) {
 // grid
 ///////////////////////
 
-function getGrid(win, area) {
-    let unmax = !isMaximized(win);
+function getGrid(win, area, gap) {
     return {
         left: {
             fullLeft:       { closed: Math.round(area.x),
-                              gapped: Math.round(area.x + gap.left - (panels.left && unmax ? gap.left : 0)) },
+                              gapped: Math.round(area.x + gap.left) },
             halfHorizontal: { closed: Math.round(area.x + area.width / 2),
                               gapped: Math.round(area.x + (area.width + gap.left - gap.right + gap.mid) / 2) },
         },
@@ -278,11 +372,11 @@ function getGrid(win, area) {
             halfHorizontal: { closed: Math.round(area.x + area.width / 2),
                               gapped: Math.round(area.x + area.width - (area.width + gap.left - gap.right + gap.mid) / 2) },
             fullRight:      { closed: Math.round(area.x + area.width),
-                              gapped: Math.round(area.x + area.width - gap.right + (panels.right && unmax ? gap.right : 0)) },
+                              gapped: Math.round(area.x + area.width - gap.right) },
         },
         top: {
             fullTop:        { closed: Math.round(area.y),
-                              gapped: Math.round(area.y + gap.top - (panels.top && unmax ? gap.top : 0)) },
+                              gapped: Math.round(area.y + gap.top) },
             halfVertical:   { closed: Math.round(area.y + area.height / 2),
                               gapped: Math.round(area.y + (area.height + gap.top - gap.bottom + gap.mid) / 2) },
         },
@@ -290,7 +384,7 @@ function getGrid(win, area) {
             halfVertical:   { closed: Math.round(area.y + area.height / 2),
                               gapped: Math.round(area.y + area.height - (area.height + gap.top - gap.bottom + gap.mid) / 2) },
             fullBottom:     { closed: Math.round(area.y + area.height),
-                              gapped: Math.round(area.y + area.height - gap.bottom + (panels.bottom && unmax ? gap.bottom : 0)) },
+                              gapped: Math.round(area.y + area.height - gap.bottom) },
         }
     };
 }
@@ -310,21 +404,21 @@ function nearWindow(a, b, gapSize) {
 }
 
 function overlapHor(w1, w2) {
-    let tol = 2 * gap.mid;
+    let tol = 2 * midGap;
     return (w1.left <= w2.left + tol && w1.right > w2.left + tol)
         || (w2.left <= w1.left + tol && w2.right + tol > w1.left);
 }
 
 function overlapVer(w1, w2) {
-    let tol = 2 * gap.mid;
+    let tol = 2 * midGap;
     return (w1.top <= w2.top + tol && w1.bottom > w2.top + tol)
         || (w2.top <= w1.top + tol && w2.bottom + tol > w1.top);
 }
 
 function halfL(d) { return Math.floor(d / 2); }
 function halfU(d) { return Math.ceil(d / 2); }
-function halfGapL() { return Math.floor(gap.mid / 2); }
-function halfGapU() { return Math.ceil(gap.mid / 2); }
+function halfGapL() { return Math.floor(midGap / 2); }
+function halfGapU() { return Math.ceil(midGap / 2); }
 
 
 ///////////////////////
@@ -339,8 +433,7 @@ function ignoreClient(win) {
     if (!config.includeMaximized && isMaximized(win)) return true;
     if (config.excludeMode && config.applications.includes(String(win.resourceClass))) return true;
     if (config.includeMode && !config.applications.includes(String(win.resourceClass))) return true;
-    // Skip windows that are not tiled/snapped (freely placed, dialogs, popups, config windows)
-    // In KWin 6, tiled windows have a tile property
+    // Skip windows that are not tiled/snapped
     if (typeof win.tile !== "undefined" && win.tile === null) return true;
     return false;
 }
@@ -349,14 +442,10 @@ function ignoreOther(win1, win2) {
     if (ignoreClient(win2)) return true;
     if (win2 === win1) return true;
     if (win2.minimized) return true;
-    // Same screen check
     if (win2.output !== win1.output && win2.screen !== win1.screen) return true;
-    // Same desktop check (KWin 6 uses desktops array)
     if (win1.desktops && win2.desktops) {
         let shared = win1.desktops.some(d => win2.desktops.includes(d));
-        let onAll1 = win1.onAllDesktops;
-        let onAll2 = win2.onAllDesktops;
-        if (!shared && !onAll1 && !onAll2) return true;
+        if (!shared && !win1.onAllDesktops && !win2.onAllDesktops) return true;
     } else {
         if (win2.desktop !== win1.desktop && !win2.onAllDesktops && !win1.onAllDesktops) return true;
     }

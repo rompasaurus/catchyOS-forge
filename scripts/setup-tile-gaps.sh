@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
 # Install & configure Window Gaps for KDE Plasma 6.
-# Adds gaps around snapped/tiled windows. Based on nclarius/tile-gaps,
-# ported to KWin 6 API.
+# Adds gaps around snapped/tiled windows. Automatically detects panels
+# and adds extra gap on those edges.
 #
 # Usage:
 #   bash scripts/setup-tile-gaps.sh              # Install with defaults
 #   bash scripts/setup-tile-gaps.sh --configure  # Change gap values
+#   bash scripts/setup-tile-gaps.sh --uninstall  # Remove
 #
 set -euo pipefail
 
@@ -28,11 +29,9 @@ get_current() {
     kreadconfig6 --file kwinrc --group Script-tilegaps --key "$1" --default "$2" 2>/dev/null || echo "$2"
 }
 
-CUR_LEFT=$(get_current gapLeft 16)
-CUR_RIGHT=$(get_current gapRight 16)
-CUR_TOP=$(get_current gapTop 52)
-CUR_BOTTOM=$(get_current gapBottom 76)
+CUR_BASE=$(get_current gapBase 16)
 CUR_MID=$(get_current gapMid 16)
+CUR_PANEL_PAD=$(get_current panelPadding 10)
 
 # ─── Functions ────────────────────────────────────────────────────────────
 
@@ -47,17 +46,11 @@ install_plugin() {
 }
 
 apply_config() {
-    local left="$1" right="$2" top="$3" bottom="$4" mid="$5"
+    local base="$1" mid="$2" panel_pad="$3"
 
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapLeft "$left"
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapRight "$right"
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapTop "$top"
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapBottom "$bottom"
+    kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapBase "$base"
     kwriteconfig6 --file kwinrc --group Script-tilegaps --key gapMid "$mid"
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key panelTop false
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key panelBottom false
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key panelLeft false
-    kwriteconfig6 --file kwinrc --group Script-tilegaps --key panelRight false
+    kwriteconfig6 --file kwinrc --group Script-tilegaps --key panelPadding "$panel_pad"
     kwriteconfig6 --file kwinrc --group Script-tilegaps --key includeMaximized false
 }
 
@@ -79,11 +72,12 @@ prompt_value() {
 show_config() {
     echo ""
     echo "  Current gap configuration:"
-    echo "    Left:    ${1}px"
-    echo "    Right:   ${2}px"
-    echo "    Top:     ${3}px  (account for top panel)"
-    echo "    Bottom:  ${4}px  (account for bottom panel)"
-    echo "    Between: ${5}px  (gap between adjacent windows)"
+    echo "    Base gap:       ${1}px  (gap on all screen edges)"
+    echo "    Between windows: ${2}px  (gap between adjacent windows)"
+    echo "    Panel padding:  ${3}px  (extra gap around detected panels)"
+    echo ""
+    echo "  Panels are auto-detected per monitor."
+    echo "  Monitors without panels get only the base gap."
     echo ""
 }
 
@@ -95,26 +89,24 @@ configure() {
     echo "  └──────────────────────────────────────────┘"
     echo -e "${NC}"
 
-    show_config "$CUR_LEFT" "$CUR_RIGHT" "$CUR_TOP" "$CUR_BOTTOM" "$CUR_MID"
+    show_config "$CUR_BASE" "$CUR_MID" "$CUR_PANEL_PAD"
 
     echo "  Enter new values (press Enter to keep current):"
     echo ""
 
-    local new_left new_right new_top new_bottom new_mid
+    local new_base new_mid new_panel_pad
 
-    prompt_value "Left gap"           "$CUR_LEFT"   new_left
-    prompt_value "Right gap"          "$CUR_RIGHT"  new_right
-    prompt_value "Top gap (panel)"    "$CUR_TOP"    new_top
-    prompt_value "Bottom gap (panel)" "$CUR_BOTTOM" new_bottom
-    prompt_value "Between windows"    "$CUR_MID"    new_mid
+    prompt_value "Base gap (all edges)"     "$CUR_BASE"      new_base
+    prompt_value "Between windows"          "$CUR_MID"       new_mid
+    prompt_value "Extra padding for panels" "$CUR_PANEL_PAD" new_panel_pad
 
     echo ""
     info "Applying configuration..."
-    apply_config "$new_left" "$new_right" "$new_top" "$new_bottom" "$new_mid"
+    apply_config "$new_base" "$new_mid" "$new_panel_pad"
     reload_kwin
 
     log "Configuration applied!"
-    show_config "$new_left" "$new_right" "$new_top" "$new_bottom" "$new_mid"
+    show_config "$new_base" "$new_mid" "$new_panel_pad"
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────
@@ -122,7 +114,7 @@ configure() {
 echo -e "${CYAN}"
 echo "  ┌──────────────────────────────────────────┐"
 echo "  │    Window Gaps — Tile Gap Manager         │"
-echo "  │   Gaps for snapped/tiled windows          │"
+echo "  │   Auto-detects panels per monitor         │"
 echo "  │          KDE Plasma 6                     │"
 echo "  └──────────────────────────────────────────┘"
 echo -e "${NC}"
@@ -140,11 +132,11 @@ case "${1:-}" in
         ;;
     *)
         install_plugin
-        info "Applying default gap configuration..."
-        apply_config "$CUR_LEFT" "$CUR_RIGHT" "$CUR_TOP" "$CUR_BOTTOM" "$CUR_MID"
+        info "Applying gap configuration..."
+        apply_config "$CUR_BASE" "$CUR_MID" "$CUR_PANEL_PAD"
         reload_kwin
         log "Window Gaps installed and active!"
-        show_config "$CUR_LEFT" "$CUR_RIGHT" "$CUR_TOP" "$CUR_BOTTOM" "$CUR_MID"
+        show_config "$CUR_BASE" "$CUR_MID" "$CUR_PANEL_PAD"
         echo "  To adjust gaps:     bash scripts/setup-tile-gaps.sh --configure"
         echo "  To uninstall:       bash scripts/setup-tile-gaps.sh --uninstall"
         ;;
