@@ -62,12 +62,13 @@ show_menu() {
     echo -e "  ${BOLD}── Software & Security ──${NC}"
     echo "  10) Software Selection    (Browsers, IDEs, Media, Gaming, ...)"
     echo "  11) CAC Smart Card        (DoD CAC reader for Chrome)"
+    echo "  12) Claude Code           (Anthropic CLI for Claude)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  12) All of the above"
+    echo "  13) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-12]: " choice
+    read -rp "Choice [0-13]: " choice
     echo ""
 
     case "$choice" in
@@ -82,7 +83,8 @@ show_menu() {
         9)  run_script "setup-xbox-bt-controller.sh" ;;
         10) run_script "install-software.sh" ;;
         11) run_script "setup-cac.sh" ;;
-        12) run_all ;;
+        12) run_script "setup-claude-code.sh" ;;
+        13) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -101,6 +103,7 @@ run_all() {
     run_script "setup-xbox-bt-controller.sh"
     run_script "install-software.sh" "--all"
     run_script "setup-cac.sh"
+    run_script "setup-claude-code.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -129,6 +132,7 @@ for arg in "$@"; do
         --xbox)      run_script "setup-xbox-bt-controller.sh" ;;
         --software)  run_script "install-software.sh" ;;
         --cac)       run_script "setup-cac.sh" ;;
+        --claude)    run_script "setup-claude-code.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -145,6 +149,7 @@ for arg in "$@"; do
             echo "  --xbox       Xbox Bluetooth controller (xpadneo)"
             echo "  --software   Software selection (browsers, IDEs, media, etc.)"
             echo "  --cac        CAC smart card setup for Chrome"
+            echo "  --claude     Claude Code CLI (Anthropic)"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
