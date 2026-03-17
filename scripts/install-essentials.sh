@@ -77,21 +77,11 @@ else
     curl https://mise.run | sh
 fi
 
-# ─── thefuck (command corrector) ─────────────────────────────────────────────
-
-if command -v thefuck &>/dev/null; then
-    log "thefuck already installed"
-else
-    info "Installing thefuck via pipx..."
-    pipx ensurepath
-    pipx install thefuck
-fi
-
 # ─── Verify ──────────────────────────────────────────────────────────────────
 
 echo ""
 info "Verification:"
-for cmd in zoxide fzf starship direnv mise thefuck bat eza fd dust duf rg tre btop doggo lazygit lazydocker; do
+for cmd in zoxide fzf starship direnv mise bat eza fd dust duf rg tre btop doggo lazygit lazydocker; do
     if command -v "$cmd" &>/dev/null; then
         echo -e "  ${GREEN}✓${NC} $cmd"
     else
