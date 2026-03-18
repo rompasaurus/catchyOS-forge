@@ -64,12 +64,13 @@ show_menu() {
     echo "  11) CAC Smart Card        (DoD CAC reader for Chrome)"
     echo "  12) Claude Code           (Anthropic CLI for Claude)"
     echo "  13) Blu-Ray Player        (VLC + MakeMKV disc playback)"
+    echo "  14) RE HD Mods            (Proton GE + Door Skip mod)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  14) All of the above"
+    echo "  15) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-14]: " choice
+    read -rp "Choice [0-15]: " choice
     echo ""
 
     case "$choice" in
@@ -86,7 +87,8 @@ show_menu() {
         11) run_script "setup-cac.sh" ;;
         12) run_script "setup-claude-code.sh" ;;
         13) run_script "setup-bluray.sh" ;;
-        14) run_all ;;
+        14) run_script "setup-re-hd-mods.sh" ;;
+        15) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -137,6 +139,7 @@ for arg in "$@"; do
         --cac)       run_script "setup-cac.sh" ;;
         --claude)    run_script "setup-claude-code.sh" ;;
         --bluray)    run_script "setup-bluray.sh" ;;
+        --re-mods)   run_script "setup-re-hd-mods.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -155,6 +158,7 @@ for arg in "$@"; do
             echo "  --cac        CAC smart card setup for Chrome"
             echo "  --claude     Claude Code CLI (Anthropic)"
             echo "  --bluray     Blu-Ray playback (VLC + MakeMKV)"
+            echo "  --re-mods    RE HD Remaster mods (Proton GE + Door Skip)"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
