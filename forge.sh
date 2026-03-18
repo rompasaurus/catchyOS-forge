@@ -63,12 +63,13 @@ show_menu() {
     echo "  10) Software Selection    (Browsers, IDEs, Media, Gaming, ...)"
     echo "  11) CAC Smart Card        (DoD CAC reader for Chrome)"
     echo "  12) Claude Code           (Anthropic CLI for Claude)"
+    echo "  13) Blu-Ray Player        (VLC + MakeMKV disc playback)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  13) All of the above"
+    echo "  14) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-13]: " choice
+    read -rp "Choice [0-14]: " choice
     echo ""
 
     case "$choice" in
@@ -84,7 +85,8 @@ show_menu() {
         10) run_script "install-software.sh" ;;
         11) run_script "setup-cac.sh" ;;
         12) run_script "setup-claude-code.sh" ;;
-        13) run_all ;;
+        13) run_script "setup-bluray.sh" ;;
+        14) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -104,6 +106,7 @@ run_all() {
     run_script "install-software.sh" "--all"
     run_script "setup-cac.sh"
     run_script "setup-claude-code.sh"
+    run_script "setup-bluray.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -133,6 +136,7 @@ for arg in "$@"; do
         --software)  run_script "install-software.sh" ;;
         --cac)       run_script "setup-cac.sh" ;;
         --claude)    run_script "setup-claude-code.sh" ;;
+        --bluray)    run_script "setup-bluray.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -150,6 +154,7 @@ for arg in "$@"; do
             echo "  --software   Software selection (browsers, IDEs, media, etc.)"
             echo "  --cac        CAC smart card setup for Chrome"
             echo "  --claude     Claude Code CLI (Anthropic)"
+            echo "  --bluray     Blu-Ray playback (VLC + MakeMKV)"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
