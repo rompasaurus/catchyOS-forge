@@ -37,20 +37,44 @@ cat > ~/.local/bin/fix-denon-audio << 'SCRIPT'
 
 CARD="alsa_card.pci-0000_0a_00.0"
 PROFILE="output:hdmi-surround71-extra1"
+NOTIFY=false
+command -v notify-send &>/dev/null && NOTIFY=true
+
+notify() {
+    echo "$1"
+    $NOTIFY && notify-send -i audio-speakers "Denon Audio" "$1" 2>/dev/null || true
+}
+
+# Wait for PipeWire/WirePlumber to be ready (up to 15 seconds)
+for i in $(seq 1 15); do
+    if pactl info &>/dev/null && wpctl status &>/dev/null; then
+        break
+    fi
+    echo "Waiting for PipeWire... ($i/15)"
+    sleep 1
+done
+
+if ! pactl info &>/dev/null; then
+    notify "ERROR: PipeWire not ready after 15s"
+    exit 1
+fi
 
 echo "Setting audio profile to 7.1 surround on DENON-AVR..."
 pactl set-card-profile "$CARD" "$PROFILE"
 
-# Wait for sink to appear
-sleep 1
+# Wait for sink to appear (up to 5 seconds)
+SINK_PACTL=""
+for i in $(seq 1 5); do
+    SINK_PACTL=$(pactl list sinks short | grep "hdmi-surround71-extra1" | awk '{print $1}')
+    [ -n "$SINK_PACTL" ] && break
+    sleep 1
+done
 
-# Get the new sink name (pactl ID)
-SINK_PACTL=$(pactl list sinks short | grep "hdmi-surround71-extra1" | awk '{print $1}')
 # Get the WirePlumber object ID
 SINK_WPCTL=$(wpctl status | grep -oP '\d+(?=\.\s+HDA Intel PCH Digital Surround 7\.1 \(HDMI 2\))')
 
 if [ -z "$SINK_PACTL" ] || [ -z "$SINK_WPCTL" ]; then
-    echo "ERROR: Could not find Denon sink. Is the HDMI cable connected?"
+    notify "ERROR: Could not find Denon sink. Is the HDMI cable connected?"
     exit 1
 fi
 
@@ -63,7 +87,7 @@ pactl list sink-inputs short | awk '{print $1}' | while read -r INPUT; do
     pactl move-sink-input "$INPUT" "$SINK_PACTL" 2>/dev/null
 done
 
-echo "Audio routed to DENON-AVR (7.1 surround, HDMI 2)"
+notify "Audio routed to DENON-AVR (7.1 surround, HDMI 2)"
 echo "Volume set to 75%"
 
 # Verify
@@ -108,8 +132,8 @@ monitor.alsa.rules = [
     actions = {
       update-props = {
         api.alsa.use-acp = true
+        device.profile = "output:hdmi-surround71-extra1"
       }
-      set-profile = "output:hdmi-surround71-extra1"
     }
   }
 ]
@@ -147,9 +171,10 @@ Wants=pipewire.service wireplumber.service
 
 [Service]
 Type=oneshot
-ExecStartPre=/bin/sleep 3
 ExecStart=/home/rompasaurus/.local/bin/fix-denon-audio
 RemainAfterExit=yes
+Restart=on-failure
+RestartSec=3
 
 [Install]
 WantedBy=graphical-session.target
