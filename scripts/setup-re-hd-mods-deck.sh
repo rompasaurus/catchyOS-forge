@@ -228,15 +228,21 @@ install_doorskip() {
     local game_dir="$1"
     local game_name="$2"
 
-    if [[ -f "$game_dir/dinput8.dll" && -d "$game_dir/scripts" ]]; then
-        log "Door Skip Plugin already installed for $game_name."
-        return
-    fi
-
     # Check we can write to the game directory (relevant for SD card permissions)
     if [[ ! -w "$game_dir" ]]; then
         err "Cannot write to $game_dir"
         echo "  If the game is on a microSD card, make sure it's not mounted read-only."
+        return
+    fi
+
+    # Clean up BhdTool leftovers (incompatible with Proton)
+    if [[ -f "$game_dir/rooms.json" ]]; then
+        warn "Removing BhdTool leftovers from $game_name..."
+        rm -f "$game_dir/dinput8.dll" "$game_dir/rooms.json" "$game_dir/bhdtool.ini"
+    fi
+
+    if [[ -f "$game_dir/dinput8.dll" && -d "$game_dir/scripts" ]]; then
+        log "Door Skip Plugin already installed for $game_name."
         return
     fi
 

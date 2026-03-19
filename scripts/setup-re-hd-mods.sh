@@ -173,6 +173,12 @@ install_doorskip() {
     local game_dir="$1"
     local game_name="$2"
 
+    # Clean up BhdTool leftovers (incompatible with Proton)
+    if [[ -f "$game_dir/rooms.json" ]]; then
+        warn "Removing BhdTool leftovers from $game_name..."
+        rm -f "$game_dir/dinput8.dll" "$game_dir/rooms.json" "$game_dir/bhdtool.ini"
+    fi
+
     if [[ -f "$game_dir/dinput8.dll" && -d "$game_dir/scripts" ]]; then
         log "Door Skip Plugin already installed for $game_name."
         return
