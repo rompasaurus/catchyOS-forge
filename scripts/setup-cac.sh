@@ -43,17 +43,59 @@ fi
 
 info "Installing smart card packages (will prompt for sudo password)..."
 sudo pacman -S --needed --noconfirm \
-    opensc ccid pcsc-tools nss unzip wget
+    opensc ccid pcsc-tools pcsclite libusb nss unzip wget
 
 # coolkey equivalent on Arch — opensc handles most CAC cards
 # libnss3-tools equivalent is 'nss' which provides certutil and modutil
+# pcsc-lite provides the pcscd daemon; libusb is needed for USB reader access
 
 log "Smart card packages installed."
+
+# ─── Step 1b: Install udev rules for USB smart card readers ──────────────────
+
+UDEV_RULE="/etc/udev/rules.d/92-smart-card-reader.rules"
+info "Installing udev rules for USB smart card reader access..."
+
+# Grant plugdev/scard group access; fall back to TAG+="uaccess" so the
+# logged-in seat user can always open the device (works with systemd-logind).
+sudo tee "$UDEV_RULE" > /dev/null << 'UDEVRULES'
+# ── Smart card / CAC reader permissions ──────────────────────────
+# Allow the logged-in user (via systemd seat) to access USB CCID readers.
+# Class 0x0b = Smart Card device class (covers most readers).
+# Specific readers that sometimes use vendor class are listed by VID:PID.
+
+# Generic: any USB device with Smart Card interface class
+SUBSYSTEM=="usb", ATTR{bInterfaceClass}=="0b", TAG+="uaccess"
+
+# HID Global / OmniKey readers (common CAC readers)
+SUBSYSTEM=="usb", ATTR{idVendor}=="076b", TAG+="uaccess"
+
+# Identiv / SCM Microsystems
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e6", TAG+="uaccess"
+
+# Gemalto / Thales
+SUBSYSTEM=="usb", ATTR{idVendor}=="08e6", TAG+="uaccess"
+
+# Cherry GmbH
+SUBSYSTEM=="usb", ATTR{idVendor}=="046a", TAG+="uaccess"
+
+# Alcor Micro (built-in laptop readers)
+SUBSYSTEM=="usb", ATTR{idVendor}=="058f", TAG+="uaccess"
+
+# Yubico YubiKey (also acts as a CCID smart card)
+SUBSYSTEM=="usb", ATTR{idVendor}=="1050", TAG+="uaccess"
+UDEVRULES
+
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+log "Udev rules installed and reloaded."
 
 # ─── Step 2: Enable and start pcscd ─────────────────────────────────────────
 
 info "Enabling and starting pcscd (smart card daemon)..."
 sudo systemctl enable pcscd.socket --now
+# Restart pcscd so it picks up the new udev permissions
+sudo systemctl restart pcscd.service
 sudo systemctl enable pcscd.service --now
 log "pcscd is running."
 
@@ -192,6 +234,12 @@ if command -v pcsc_scan &>/dev/null; then
     timeout 5 pcsc_scan 2>/dev/null | head -15 || warn "No card reader detected. Plug in your CAC reader and try: pcsc_scan"
 fi
 
+# Check for USB access errors in pcscd journal
+if journalctl -u pcscd.service --no-pager -n 20 2>/dev/null | grep -q "LIBUSB_ERROR_ACCESS"; then
+    warn "pcscd still reports LIBUSB_ERROR_ACCESS — try unplugging and re-plugging the reader,"
+    warn "or reboot to fully apply the new udev rules."
+fi
+
 # ─── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -211,4 +259,7 @@ echo "    - List certs:     certutil -d $NSSDB -L"
 echo "    - Test reader:    pcsc_scan"
 echo "    - Check slots:    pkcs11-tool --list-slots"
 echo "    - Check daemon:   systemctl status pcscd"
+echo "    - USB access:     journalctl -u pcscd -n 20 (look for LIBUSB_ERROR_ACCESS)"
+echo "    - Udev rules:     cat /etc/udev/rules.d/92-smart-card-reader.rules"
+echo "    - Re-plug reader or reboot if USB permissions don't take effect"
 echo ""
