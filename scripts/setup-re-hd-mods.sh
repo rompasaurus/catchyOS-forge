@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Resident Evil HD Remaster — Proton GE + BhdTool Mod Setup
+# Resident Evil HD Remaster — Proton GE + Door Skip Mod Setup
 #
 # Sets up:
 #   1. GE-Proton (latest) for better compatibility on Linux
-#   2. BhdTool — in-game tool with save anywhere, door skip, room jump
-#      Press F5 in-game to open the BhdTool menu
+#   2. ThirteenAG's Door Skip Plugin — auto-skips door animations
+#      (normally 7.6s → reduced to ~2.2s, no trainer needed)
 #
 # Supports: RE HD Remaster (304240) and RE0 HD Remaster (339340)
 #
@@ -27,7 +27,7 @@ err()  { echo -e "${RED}[x]${NC} $*"; }
 echo -e "${CYAN}"
 echo "  ┌──────────────────────────────────────────┐"
 echo "  │   Resident Evil HD — Linux Mod Setup      │"
-echo "  │   Proton GE + BhdTool                     │"
+echo "  │   Proton GE + Door Skip Plugin            │"
 echo "  │          CachyOS / Arch                   │"
 echo "  └──────────────────────────────────────────┘"
 echo -e "${NC}"
@@ -159,71 +159,44 @@ else
     log "GE-Proton $GE_TAG installed."
 fi
 
-# ─── 2. Install BhdTool ───────────────────────────────────────────────────────
+# ─── 2. Install Door Skip Plugin (ThirteenAG) ──────────────────────────────
 #
-# BhdTool adds an in-game imgui overlay (F5) with:
-#   - Save Anywhere (no ink ribbons / typewriter needed)
-#   - Door Skip (auto-skips door opening animations)
-#   - Room Jump (teleport to any room)
+# This is a dinput8.dll wrapper + scripts folder that automatically skips
+# door opening animations. Works with Proton via WINEDLLOVERRIDES.
+# Does NOT disable achievements.
 #
-# Uses dinput8.dll + rooms.json. Works with Proton via WINEDLLOVERRIDES.
-# Generates bhdtool.ini on first close for config (EnableBhdTool=0 to disable).
-#
-# Source: https://github.com/eleval/BhdTool
+# Source: https://github.com/ThirteenAG/RE0.RE1.DoorSkipPlugin
 
-# Check for 7z (p7zip) — needed to extract BhdTool's .7z archive
-if ! command -v 7z &>/dev/null; then
-    err "7z (p7zip) is required to extract BhdTool."
-    echo "  Install with: sudo pacman -S p7zip"
-    exit 1
-fi
+DOORSKIP_URL="https://github.com/ThirteenAG/RE0.RE1.DoorSkipPlugin/releases/download/v1.0/RE0.RE1.DoorSkipPlugin.zip"
 
-info "Fetching latest BhdTool release..."
-
-BHDTOOL_JSON=$(curl -fsSL "https://api.github.com/repos/eleval/BhdTool/releases/latest")
-BHDTOOL_TAG=$(echo "$BHDTOOL_JSON" | grep -oP '"tag_name":\s*"\K[^"]+')
-BHDTOOL_URL=$(echo "$BHDTOOL_JSON" | grep -oP '"browser_download_url":\s*"\K[^"]+\.7z(?=")')
-
-if [[ -z "$BHDTOOL_TAG" || -z "$BHDTOOL_URL" ]]; then
-    err "Failed to fetch BhdTool release info."
-    exit 1
-fi
-
-install_bhdtool() {
+install_doorskip() {
     local game_dir="$1"
     local game_name="$2"
 
-    # Clean up old ThirteenAG Door Skip Plugin files (conflicts with BhdTool)
-    if [[ -d "$game_dir/scripts" ]]; then
-        warn "Removing old ThirteenAG Door Skip Plugin files for $game_name..."
-        rm -rf "$game_dir/scripts"
-        rm -f "$game_dir/dinput8.dll"
-    fi
-
-    if [[ -f "$game_dir/dinput8.dll" && -f "$game_dir/rooms.json" ]]; then
-        log "BhdTool already installed for $game_name."
+    if [[ -f "$game_dir/dinput8.dll" && -d "$game_dir/scripts" ]]; then
+        log "Door Skip Plugin already installed for $game_name."
         return
     fi
 
-    info "Installing BhdTool $BHDTOOL_TAG for $game_name..."
+    info "Installing Door Skip Plugin for $game_name..."
 
-    local tmp_archive
-    tmp_archive=$(mktemp /tmp/bhdtool-XXXXXX.7z)
-    curl -fSL --progress-bar -o "$tmp_archive" "$BHDTOOL_URL"
+    local tmp_zip
+    tmp_zip=$(mktemp /tmp/doorskip-XXXXXX.zip)
+    curl -fSL --progress-bar -o "$tmp_zip" "$DOORSKIP_URL"
 
     # Extract into game directory
-    7z x -o"$game_dir" -y "$tmp_archive" > /dev/null 2>&1
-    rm -f "$tmp_archive"
+    unzip -o "$tmp_zip" -d "$game_dir/" > /dev/null 2>&1
+    rm -f "$tmp_zip"
 
-    if [[ -f "$game_dir/dinput8.dll" && -f "$game_dir/rooms.json" ]]; then
-        log "BhdTool $BHDTOOL_TAG installed for $game_name."
+    if [[ -f "$game_dir/dinput8.dll" ]]; then
+        log "Door Skip Plugin installed for $game_name."
     else
-        err "BhdTool extraction failed for $game_name."
+        err "Door Skip Plugin extraction failed for $game_name."
     fi
 }
 
-[[ -n "$RE1_DIR" ]] && install_bhdtool "$RE1_DIR" "RE HD Remaster"
-[[ -n "$RE0_DIR" ]] && install_bhdtool "$RE0_DIR" "RE0 HD Remaster"
+[[ -n "$RE1_DIR" ]] && install_doorskip "$RE1_DIR" "RE HD Remaster"
+[[ -n "$RE0_DIR" ]] && install_doorskip "$RE0_DIR" "RE0 HD Remaster"
 
 # ─── 3. Set Steam launch options ────────────────────────────────────────────
 #
@@ -247,9 +220,9 @@ echo ""
 echo "     General tab → Launch Options:"
 echo -e "       ${YELLOW}WINEDLLOVERRIDES=\"dinput8=n,b\" %command%${NC}"
 echo ""
-echo "  This tells Proton to load BhdTool's DLL as a native override."
-echo "  Press F5 in-game to open the BhdTool menu."
-echo "  Features: Save Anywhere, Door Skip, Room Jump."
+echo "  This tells Proton to load the door skip DLL as a native override."
+echo "  Door animations will be auto-skipped (no trainer needed)."
+echo "  Achievements are NOT disabled."
 echo ""
 
 # ─── 4. Verify installation ─────────────────────────────────────────────────
@@ -263,18 +236,18 @@ else
 fi
 
 if [[ -n "$RE1_DIR" ]]; then
-    if [[ -f "$RE1_DIR/dinput8.dll" && -f "$RE1_DIR/rooms.json" ]]; then
-        echo -e "  ${GREEN}✓${NC} BhdTool $BHDTOOL_TAG installed (RE HD Remaster)"
+    if [[ -f "$RE1_DIR/dinput8.dll" && -d "$RE1_DIR/scripts" ]]; then
+        echo -e "  ${GREEN}✓${NC} Door Skip Plugin installed (RE HD Remaster)"
     else
-        echo -e "  ${YELLOW}✗${NC} BhdTool missing (RE HD Remaster)"
+        echo -e "  ${YELLOW}✗${NC} Door Skip Plugin missing (RE HD Remaster)"
     fi
 fi
 
 if [[ -n "$RE0_DIR" ]]; then
-    if [[ -f "$RE0_DIR/dinput8.dll" && -f "$RE0_DIR/rooms.json" ]]; then
-        echo -e "  ${GREEN}✓${NC} BhdTool $BHDTOOL_TAG installed (RE0 HD Remaster)"
+    if [[ -f "$RE0_DIR/dinput8.dll" && -d "$RE0_DIR/scripts" ]]; then
+        echo -e "  ${GREEN}✓${NC} Door Skip Plugin installed (RE0 HD Remaster)"
     else
-        echo -e "  ${YELLOW}✗${NC} BhdTool missing (RE0 HD Remaster)"
+        echo -e "  ${YELLOW}✗${NC} Door Skip Plugin missing (RE0 HD Remaster)"
     fi
 fi
 
