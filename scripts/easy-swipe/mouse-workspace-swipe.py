@@ -144,7 +144,28 @@ def find_back_button(key_caps):
     return None
 
 
-def scan_and_add_devices(fd_to_dev, dev_back_buttons):
+def is_keyboard_or_touchpad(dev):
+    """Return True if the device looks like a keyboard or touchpad, not a mouse."""
+    name_lower = dev.name.lower()
+    # Skip anything that identifies as a keyboard, touchpad, or trackpad
+    skip_keywords = ("keyboard", "touchpad", "trackpad", "trackpoint", "lid switch",
+                     "power button", "video bus", "pc speaker")
+    if any(kw in name_lower for kw in skip_keywords):
+        return True
+    caps = dev.capabilities()
+    key_caps = set(caps.get(ecodes.EV_KEY, []))
+    # If the device has alphabetic keys, it's a keyboard (or keyboard combo device)
+    keyboard_keys = {ecodes.KEY_A, ecodes.KEY_Z, ecodes.KEY_SPACE, ecodes.KEY_ENTER}
+    if keyboard_keys & key_caps:
+        return True
+    # If it has absolute axes (ABS_X/ABS_Y) it's likely a touchpad, not a mouse
+    abs_caps = set(caps.get(ecodes.EV_ABS, []))
+    if ecodes.ABS_X in abs_caps or ecodes.ABS_MT_POSITION_X in abs_caps:
+        return True
+    return False
+
+
+def scan_and_add_devices(fd_to_dev, dev_back_buttons, seen_paths=set()):
     """Re-scan /dev/input/event*, skip already-tracked paths, grab new mice."""
     tracked_paths = {dev.path for dev in fd_to_dev.values()}
     for path in evdev.list_devices():
@@ -155,6 +176,13 @@ def scan_and_add_devices(fd_to_dev, dev_back_buttons):
         except OSError:
             continue
         if "workspace-swipe proxy" in dev.name:
+            dev.close()
+            continue
+        # Skip keyboards, touchpads, and combo devices
+        if is_keyboard_or_touchpad(dev):
+            if path not in seen_paths:
+                print(f"Skipping non-mouse: {dev.name} ({dev.path})", file=sys.stderr)
+                seen_paths.add(path)
             dev.close()
             continue
         caps = dev.capabilities()
