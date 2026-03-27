@@ -4,7 +4,7 @@ Hold mouse back button + move to switch KDE Plasma virtual desktops.
 Uses KWin's DBus interface for reliable desktop management.
 
 Gestures:
-  Back + swipe right → next desktop (creates new one if on last)
+  Back + swipe right → next desktop (wraps to first if on last)
   Back + swipe left  → previous desktop
   Back click (no swipe) → toggle Overview (desktops & apps view)
 """
@@ -74,19 +74,16 @@ def get_desktop_count():
 
 
 def switch_desktop_right():
-    """Move to the next desktop. If on the last one, create a new desktop first."""
+    """Move to the next desktop, wrapping around to the first if on the last."""
     current = get_current_desktop()
     count = get_desktop_count()
     if current is None or count is None:
         print(f"DBus error: current={current}, count={count}", file=sys.stderr)
         return
     if current >= count:
-        qdbus(
-            "org.kde.KWin", "/VirtualDesktopManager",
-            "createDesktop", str(count), f"Desktop {count + 1}",
-        )
-        print(f"Created new desktop {count + 1}", file=sys.stderr)
-    qdbus("org.kde.KWin", "/KWin", "nextDesktop")
+        qdbus("org.kde.KWin", "/KWin", "setCurrentDesktop", "1")
+    else:
+        qdbus("org.kde.KWin", "/KWin", "nextDesktop")
 
 
 def switch_desktop_left():
