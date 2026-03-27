@@ -111,6 +111,11 @@ install_editors() {
     pac_install kitty
     pac_install terminator
     aur_install ghostty
+    # Deploy Ghostty keybind config if ghostty was installed
+    local ghostty_setup="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/setup-ghostty.sh"
+    if command -v ghostty &>/dev/null && [ -f "$ghostty_setup" ]; then
+        bash "$ghostty_setup"
+    fi
     log "Editors & terminals done."
     info "JetBrains Toolbox is a separate forge option (--jetbrains)."
 }

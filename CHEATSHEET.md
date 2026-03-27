@@ -212,8 +212,16 @@ Increase/Decrease, Rotate, Rotate Part, Focus Next, Focus Right, Toggle Dock.
 | `Ctrl + Shift + A`  | Select All         |
 | `Ctrl + Shift + O`  | Open Split Right   |
 | `Ctrl + Shift + E`  | Open Split Down    |
-| `Ctrl + Shift + [`  | Previous Split     |
-| `Ctrl + Shift + ]`  | Next Split         |
+### Split Navigation
+
+| Shortcut              | Action             |
+|-----------------------|--------------------|
+| `Ctrl + Shift + [`    | Previous Split     |
+| `Ctrl + Shift + ]`    | Next Split         |
+| `Ctrl + Shift + K`    | Focus Top Split    |
+| `Ctrl + Shift + J`    | Focus Bottom Split |
+| `Ctrl + Shift + H`    | Focus Left Split   |
+| `Ctrl + Shift + L`    | Focus Right Split  |
 
 > Shell: Zsh | Config: `~/.config/ghostty/config`
 

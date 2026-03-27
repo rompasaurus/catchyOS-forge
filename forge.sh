@@ -65,12 +65,13 @@ show_menu() {
     echo "  12) Claude Code           (Anthropic CLI for Claude)"
     echo "  13) Blu-Ray Player        (VLC + MakeMKV disc playback)"
     echo "  14) RE HD Mods            (Proton GE + Door Skip mod)"
+    echo "  15) Ghostty Terminal      (Install + keybind config)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  15) All of the above"
+    echo "  16) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-15]: " choice
+    read -rp "Choice [0-16]: " choice
     echo ""
 
     case "$choice" in
@@ -88,7 +89,8 @@ show_menu() {
         12) run_script "setup-claude-code.sh" ;;
         13) run_script "setup-bluray.sh" ;;
         14) run_script "setup-re-hd-mods.sh" ;;
-        15) run_all ;;
+        15) run_script "setup-ghostty.sh" ;;
+        16) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -109,6 +111,7 @@ run_all() {
     run_script "setup-cac.sh"
     run_script "setup-claude-code.sh"
     run_script "setup-bluray.sh"
+    run_script "setup-ghostty.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -140,6 +143,7 @@ for arg in "$@"; do
         --claude)    run_script "setup-claude-code.sh" ;;
         --bluray)    run_script "setup-bluray.sh" ;;
         --re-mods)   run_script "setup-re-hd-mods.sh" ;;
+        --ghostty)   run_script "setup-ghostty.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -159,6 +163,7 @@ for arg in "$@"; do
             echo "  --claude     Claude Code CLI (Anthropic)"
             echo "  --bluray     Blu-Ray playback (VLC + MakeMKV)"
             echo "  --re-mods    RE HD Remaster mods (Proton GE + Door Skip)"
+            echo "  --ghostty    Ghostty terminal + keybind config"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
