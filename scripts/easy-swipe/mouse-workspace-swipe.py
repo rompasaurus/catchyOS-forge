@@ -26,51 +26,54 @@ RESCAN_INTERVAL = 2.0       # seconds between device re-scans
 BACK_BUTTON_CODES = {ecodes.BTN_SIDE, ecodes.BTN_EXTRA, ecodes.BTN_BACK, ecodes.BTN_FORWARD}
 
 
-def find_qdbus():
-    """Find qdbus6 or qdbus binary."""
-    for cmd in ("qdbus6", "qdbus"):
-        for d in os.environ.get("PATH", "/usr/bin").split(":"):
-            if os.path.isfile(os.path.join(d, cmd)):
-                return cmd
-    return None
-
-QDBUS_CMD = find_qdbus()
-
-
-def qdbus(*args):
-    """Call qdbus6/qdbus and return stdout, or None on failure."""
-    if QDBUS_CMD is None:
-        return None
+def dbus_call(dest, path, method, args=None):
+    """Call a DBus method via dbus-send. Returns stdout on success, None on failure."""
+    cmd = ["dbus-send", "--session", "--print-reply", f"--dest={dest}", path, method]
+    if args:
+        cmd.extend(args)
     try:
-        result = subprocess.run(
-            [QDBUS_CMD, *args],
-            capture_output=True, text=True, timeout=2,
-        )
-        return result.stdout.strip() if result.returncode == 0 else None
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return None
 
 
 def get_current_desktop():
     """Return the current desktop number (1-based)."""
-    val = qdbus("org.kde.KWin", "/KWin", "currentDesktop")
-    try:
-        return int(val) if val else None
-    except ValueError:
+    out = dbus_call(
+        "org.kde.KWin", "/KWin", "org.kde.KWin.currentDesktop",
+    )
+    if out is None:
         return None
+    try:
+        for line in out.splitlines():
+            line = line.strip()
+            if "int32" in line:
+                return int(line.split()[-1])
+    except ValueError:
+        pass
+    return None
 
 
 def get_desktop_count():
     """Return the total number of virtual desktops."""
-    val = qdbus(
+    out = dbus_call(
         "org.kde.KWin", "/VirtualDesktopManager",
         "org.freedesktop.DBus.Properties.Get",
-        "org.kde.KWin.VirtualDesktopManager", "count",
+        ["string:org.kde.KWin.VirtualDesktopManager", "string:count"],
     )
-    try:
-        return int(val) if val else None
-    except ValueError:
+    if out is None:
         return None
+    try:
+        for line in out.splitlines():
+            line = line.strip()
+            if "uint32" in line:
+                return int(line.split()[-1])
+    except ValueError:
+        pass
+    return None
 
 
 def switch_desktop_right():
@@ -81,21 +84,23 @@ def switch_desktop_right():
         print(f"DBus error: current={current}, count={count}", file=sys.stderr)
         return
     if current >= count:
-        qdbus("org.kde.KWin", "/KWin", "setCurrentDesktop", "1")
+        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
+                   ["int32:1"])
     else:
-        qdbus("org.kde.KWin", "/KWin", "nextDesktop")
+        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.nextDesktop")
 
 
 def switch_desktop_left():
     """Move to the previous desktop."""
-    qdbus("org.kde.KWin", "/KWin", "previousDesktop")
+    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.previousDesktop")
 
 
 def toggle_overview():
     """Toggle KDE's Overview effect (desktops & apps view)."""
-    qdbus(
+    dbus_call(
         "org.kde.kglobalaccel", "/component/kwin",
-        "org.kde.kglobalaccel.Component.invokeShortcut", "Overview",
+        "org.kde.kglobalaccel.Component.invokeShortcut",
+        ["string:Overview"],
     )
 
 
@@ -180,7 +185,7 @@ def scan_and_add_devices(fd_to_dev, dev_back_buttons):
 
 
 def main():
-    print(f"Starting mouse-workspace-swipe (qdbus={QDBUS_CMD})", file=sys.stderr)
+    print("Starting mouse-workspace-swipe (dbus-send)", file=sys.stderr)
     ui = create_uinput()
     fd_to_dev = {}
     dev_back_buttons = {}  # fd -> back button code for that device
