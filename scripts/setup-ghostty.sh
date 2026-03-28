@@ -50,8 +50,8 @@ fi
 # ─── Deploy Ghostty config ─────────────────────────────────────────────────
 
 GHOSTTY_CONFIG_DIR="$HOME/.config/ghostty"
-GHOSTTY_CONFIG="$GHOSTTY_CONFIG_DIR/config"
-FORGE_CONFIG="$CONFIGS/ghostty/config"
+GHOSTTY_CONFIG="$GHOSTTY_CONFIG_DIR/config.ghostty"
+FORGE_CONFIG="$CONFIGS/ghostty/config.ghostty"
 
 if [ ! -f "$FORGE_CONFIG" ]; then
     err "configs/ghostty/config not found in forge repo!"
