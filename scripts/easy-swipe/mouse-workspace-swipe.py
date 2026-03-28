@@ -4,8 +4,8 @@ Hold mouse back button + move to switch KDE Plasma virtual desktops.
 Uses KWin's DBus interface for reliable desktop management.
 
 Gestures:
-  Back + swipe right → next desktop (wraps to first if on last)
-  Back + swipe left  → previous desktop
+  Back + swipe right → previous desktop (natural/drag direction)
+  Back + swipe left  → next desktop (wraps to first if on last)
   Back click (no swipe) → toggle Overview (desktops & apps view)
 """
 
@@ -301,15 +301,15 @@ def main():
                         now = time.time()
                         if not triggered and (now - last_switch) > COOLDOWN:
                             if x_accum > SWIPE_THRESHOLD:
-                                switch_desktop_right()
-                                triggered = True
-                                last_switch = now
-                                print("Swipe right → next desktop", file=sys.stderr)
-                            elif x_accum < -SWIPE_THRESHOLD:
                                 switch_desktop_left()
                                 triggered = True
                                 last_switch = now
-                                print("Swipe left → prev desktop", file=sys.stderr)
+                                print("Swipe right → prev desktop", file=sys.stderr)
+                            elif x_accum < -SWIPE_THRESHOLD:
+                                switch_desktop_right()
+                                triggered = True
+                                last_switch = now
+                                print("Swipe left → next desktop", file=sys.stderr)
 
                         # Suppress mouse movement while back is held
                         if abs(x_accum) > 30 or abs(y_accum) > 30:
