@@ -4,8 +4,8 @@ Hold mouse back button + move to switch KDE Plasma virtual desktops.
 Uses KWin's DBus interface for reliable desktop management.
 
 Gestures:
-  Back + swipe right → previous desktop (natural/drag direction)
-  Back + swipe left  → next desktop (wraps to first if on last)
+  Back + swipe right → next desktop (wraps to first if on last)
+  Back + swipe left  → previous desktop (wraps to last if on first)
   Back click (no swipe) → toggle Overview (desktops & apps view)
 """
 
@@ -84,15 +84,26 @@ def switch_desktop_right():
         print(f"DBus error: current={current}, count={count}", file=sys.stderr)
         return
     if current >= count:
-        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
-                   ["int32:1"])
+        target = 1  # wrap to first
     else:
-        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.nextDesktop")
+        target = current + 1
+    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
+              [f"int32:{target}"])
 
 
 def switch_desktop_left():
-    """Move to the previous desktop."""
-    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.previousDesktop")
+    """Move to the previous desktop, wrapping around to the last if on the first."""
+    current = get_current_desktop()
+    count = get_desktop_count()
+    if current is None or count is None:
+        print(f"DBus error: current={current}, count={count}", file=sys.stderr)
+        return
+    if current <= 1:
+        target = count  # wrap to last
+    else:
+        target = current - 1
+    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
+              [f"int32:{target}"])
 
 
 def toggle_overview():
@@ -301,15 +312,15 @@ def main():
                         now = time.time()
                         if not triggered and (now - last_switch) > COOLDOWN:
                             if x_accum > SWIPE_THRESHOLD:
-                                switch_desktop_left()
-                                triggered = True
-                                last_switch = now
-                                print("Swipe right → prev desktop", file=sys.stderr)
-                            elif x_accum < -SWIPE_THRESHOLD:
                                 switch_desktop_right()
                                 triggered = True
                                 last_switch = now
-                                print("Swipe left → next desktop", file=sys.stderr)
+                                print("Swipe right → next desktop", file=sys.stderr)
+                            elif x_accum < -SWIPE_THRESHOLD:
+                                switch_desktop_left()
+                                triggered = True
+                                last_switch = now
+                                print("Swipe left → prev desktop", file=sys.stderr)
 
                         # Suppress mouse movement while back is held
                         if abs(x_accum) > 30 or abs(y_accum) > 30:
