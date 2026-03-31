@@ -67,12 +67,13 @@ show_menu() {
     echo "  14) RE HD Mods            (Proton GE + Door Skip mod)"
     echo "  15) Ghostty Terminal      (Install + keybind config)"
     echo "  16) Touchpad Gestures    (3-finger swipe → desktop actions)"
+    echo "  17) Rounded Corners      (Round all 4 window corners)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  17) All of the above"
+    echo "  18) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-17]: " choice
+    read -rp "Choice [0-18]: " choice
     echo ""
 
     case "$choice" in
@@ -92,7 +93,8 @@ show_menu() {
         14) run_script "setup-re-hd-mods.sh" ;;
         15) run_script "setup-ghostty.sh" ;;
         16) run_script "setup-touchpad-gestures.sh" ;;
-        17) run_all ;;
+        17) run_script "setup-rounded-corners.sh" ;;
+        18) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -115,6 +117,7 @@ run_all() {
     run_script "setup-bluray.sh"
     run_script "setup-ghostty.sh"
     run_script "setup-touchpad-gestures.sh"
+    run_script "setup-rounded-corners.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -148,6 +151,7 @@ for arg in "$@"; do
         --re-mods)   run_script "setup-re-hd-mods.sh" ;;
         --ghostty)   run_script "setup-ghostty.sh" ;;
         --touchpad)  run_script "setup-touchpad-gestures.sh" ;;
+        --rounded)   run_script "setup-rounded-corners.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -169,6 +173,7 @@ for arg in "$@"; do
             echo "  --re-mods    RE HD Remaster mods (Proton GE + Door Skip)"
             echo "  --ghostty    Ghostty terminal + keybind config"
             echo "  --touchpad   3-finger touchpad gestures"
+            echo "  --rounded    Round all 4 window corners (KWin effect)"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
