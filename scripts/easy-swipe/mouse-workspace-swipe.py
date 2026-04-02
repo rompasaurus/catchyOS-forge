@@ -76,34 +76,51 @@ def get_desktop_count():
     return None
 
 
-def switch_desktop_right():
-    """Move to the next desktop, wrapping around to the first if on the last."""
-    current = get_current_desktop()
-    count = get_desktop_count()
-    if current is None or count is None:
-        print(f"DBus error: current={current}, count={count}", file=sys.stderr)
-        return
-    if current >= count:
-        target = 1  # wrap to first
-    else:
-        target = current + 1
-    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
-              [f"int32:{target}"])
+class DesktopTracker:
+    """Track current desktop locally to avoid stale DBus reads during animations."""
 
+    def __init__(self):
+        self.current = None
+        self.count = None
 
-def switch_desktop_left():
-    """Move to the previous desktop, wrapping around to the last if on the first."""
-    current = get_current_desktop()
-    count = get_desktop_count()
-    if current is None or count is None:
-        print(f"DBus error: current={current}, count={count}", file=sys.stderr)
-        return
-    if current <= 1:
-        target = count  # wrap to last
-    else:
-        target = current - 1
-    dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
-              [f"int32:{target}"])
+    def sync(self):
+        """Pull current state from KWin. Call once at startup and periodically."""
+        c = get_current_desktop()
+        n = get_desktop_count()
+        if c is not None:
+            self.current = c
+        if n is not None:
+            self.count = n
+
+    def switch_right(self):
+        """Move to the next desktop, wrapping around."""
+        if self.current is None or self.count is None:
+            self.sync()
+        if self.current is None or self.count is None:
+            print(f"DBus error: current={self.current}, count={self.count}", file=sys.stderr)
+            return
+        if self.current >= self.count:
+            target = 1
+        else:
+            target = self.current + 1
+        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
+                  [f"int32:{target}"])
+        self.current = target
+
+    def switch_left(self):
+        """Move to the previous desktop, wrapping around."""
+        if self.current is None or self.count is None:
+            self.sync()
+        if self.current is None or self.count is None:
+            print(f"DBus error: current={self.current}, count={self.count}", file=sys.stderr)
+            return
+        if self.current <= 1:
+            target = self.count
+        else:
+            target = self.current - 1
+        dbus_call("org.kde.KWin", "/KWin", "org.kde.KWin.setCurrentDesktop",
+                  [f"int32:{target}"])
+        self.current = target
 
 
 def toggle_overview():
@@ -228,6 +245,8 @@ def main():
     ui = create_uinput()
     fd_to_dev = {}
     dev_back_buttons = {}  # fd -> back button code for that device
+    desktop = DesktopTracker()
+    desktop.sync()
 
     scan_and_add_devices(fd_to_dev, dev_back_buttons)
     if not fd_to_dev:
@@ -238,6 +257,7 @@ def main():
     y_accum = 0
     triggered = False
     last_switch = 0
+    last_sync = time.time()
 
     try:
         while True:
@@ -266,6 +286,9 @@ def main():
 
             if not r:
                 scan_and_add_devices(fd_to_dev, dev_back_buttons)
+                # Periodically re-sync desktop state to catch external switches
+                desktop.sync()
+                last_sync = time.time()
                 continue
 
             for fd in r:
@@ -311,16 +334,21 @@ def main():
 
                         now = time.time()
                         if not triggered and (now - last_switch) > COOLDOWN:
+                            # Re-sync if it's been a while since last sync
+                            # (catches keyboard shortcut desktop switches)
+                            if (now - last_sync) > 2.0:
+                                desktop.sync()
+                                last_sync = now
                             if x_accum > SWIPE_THRESHOLD:
-                                switch_desktop_right()
+                                desktop.switch_right()
                                 triggered = True
                                 last_switch = now
-                                print("Swipe right → next desktop", file=sys.stderr)
+                                print(f"Swipe right → desktop {desktop.current}", file=sys.stderr)
                             elif x_accum < -SWIPE_THRESHOLD:
-                                switch_desktop_left()
+                                desktop.switch_left()
                                 triggered = True
                                 last_switch = now
-                                print("Swipe left → prev desktop", file=sys.stderr)
+                                print(f"Swipe left → desktop {desktop.current}", file=sys.stderr)
 
                         # Suppress mouse movement while back is held
                         if abs(x_accum) > 30 or abs(y_accum) > 30:
