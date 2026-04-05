@@ -4,13 +4,15 @@
 
 set -euo pipefail
 
+VIRSH="virsh -c qemu:///system"
+
 # --- GUI helpers ---
 notify() { kdialog --passivepopup "$1" 5 --title "VM Export" 2>/dev/null; }
 error_dialog() { kdialog --error "$1" --title "VM Export"; exit 1; }
 info_dialog() { kdialog --msgbox "$1" --title "VM Export"; }
 
 # --- Pick VM ---
-VM_LIST=$(virsh list --all --name 2>/dev/null | grep -v '^$' || true)
+VM_LIST=$($VIRSH list --all --name 2>/dev/null | grep -v '^$' || true)
 [[ -z "$VM_LIST" ]] && error_dialog "No VMs found in libvirt."
 
 if [[ $(echo "$VM_LIST" | wc -l) -eq 1 ]]; then
@@ -21,19 +23,19 @@ else
 fi
 
 # --- Check VM is shut off ---
-VM_STATE=$(virsh domstate "$VM_NAME" 2>/dev/null | tr -d '[:space:]')
+VM_STATE=$($VIRSH domstate "$VM_NAME" 2>/dev/null | tr -d '[:space:]')
 if [[ "$VM_STATE" != "shutoff" ]]; then
     kdialog --warningyesno "VM '$VM_NAME' is currently ${VM_STATE}.\n\nIt must be shut down for a clean export.\nShut it down now?" --title "VM Export"
     if [[ $? -eq 0 ]]; then
         notify "Shutting down ${VM_NAME}..."
-        virsh shutdown "$VM_NAME" 2>/dev/null
+        $VIRSH shutdown "$VM_NAME" 2>/dev/null
         # Wait for shutdown (max 120s)
         for i in $(seq 1 60); do
             sleep 2
-            STATE=$(virsh domstate "$VM_NAME" 2>/dev/null | tr -d '[:space:]')
+            STATE=$($VIRSH domstate "$VM_NAME" 2>/dev/null | tr -d '[:space:]')
             [[ "$STATE" == "shutoff" ]] && break
             if [[ $i -eq 60 ]]; then
-                error_dialog "VM did not shut down in time. Try: virsh destroy ${VM_NAME}"
+                error_dialog "VM did not shut down in time. Try: virsh -c qemu:///system destroy ${VM_NAME}"
             fi
         done
         notify "VM shut down."
@@ -55,7 +57,7 @@ mkdir -p "$EXPORT_DIR"
 
 # --- Find VM disk and files ---
 # Get XML config
-VM_XML=$(sudo virsh dumpxml "$VM_NAME" --inactive 2>/dev/null)
+VM_XML=$($VIRSH dumpxml "$VM_NAME" --inactive 2>/dev/null)
 if [[ -z "$VM_XML" ]]; then
     error_dialog "Failed to dump VM XML. Do you have sudo access?"
 fi
@@ -207,15 +209,15 @@ echo "[+] Setting ownership..."
 sudo chown -R libvirt-qemu:libvirt-qemu "$DEST/"
 
 echo "[+] Defining VM..."
-sudo virsh define "$TEMP_XML"
+sudo virsh -c qemu:///system define "$TEMP_XML"
 rm "$TEMP_XML"
 
 echo "[+] Setting up default network..."
-sudo virsh net-autostart default 2>/dev/null || true
-sudo virsh net-start default 2>/dev/null || true
+sudo virsh -c qemu:///system net-autostart default 2>/dev/null || true
+sudo virsh -c qemu:///system net-start default 2>/dev/null || true
 
 echo ""
-echo "[+] Done! Start with: virsh start ${VM_NAME}"
+echo "[+] Done! Start with: virsh -c qemu:///system start ${VM_NAME}"
 echo "    Or open virt-manager."
 IMPORT_SCRIPT
 
