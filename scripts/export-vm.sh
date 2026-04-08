@@ -114,50 +114,67 @@ SUMMARY+="\n\nThis may take a while for large disks.\nProceed?"
 kdialog --warningyesno "$SUMMARY" --title "VM Export"
 [[ $? -ne 0 ]] && exit 0
 
-# --- Export with progress ---
-DBUSREF=$(kdialog --progressbar "Exporting VM '${VM_NAME}'..." $(($(echo "$DISK_PATHS" | wc -w) + 3)))
-qdbus $DBUSREF showCancelButton false 2>/dev/null || true
-STEP=0
+# --- Export with terminal progress ---
+echo ""
+echo "========================================"
+echo "  Exporting VM: ${VM_NAME}"
+echo "  Destination:  ${EXPORT_DIR}"
+echo "========================================"
+echo ""
 
 # Export XML
-qdbus $DBUSREF setLabelText "Saving VM configuration..." 2>/dev/null || true
-qdbus $DBUSREF Set "" value $((++STEP)) 2>/dev/null || true
+echo "[1/4] Saving VM configuration..."
+echo "      -> ${VM_NAME}.xml"
+echo ""
 
 # Export UEFI vars
 if [[ -n "${NVRAM_PATH:-}" ]] && [[ -f "$NVRAM_PATH" ]]; then
-    qdbus $DBUSREF setLabelText "Copying UEFI variables..." 2>/dev/null || true
+    NVRAM_NAME=$(basename "$NVRAM_PATH")
+    echo "[2/4] Copying UEFI variables..."
+    echo "      -> ${NVRAM_NAME}"
     sudo cp "$NVRAM_PATH" "${EXPORT_DIR}/"
-    qdbus $DBUSREF Set "" value $((++STEP)) 2>/dev/null || true
+    echo "      Done."
+else
+    echo "[2/4] No UEFI variables to copy, skipping."
 fi
+echo ""
 
 # Export TPM state
 if [[ -n "${TPM_DIR:-}" ]] && [[ -d "$TPM_DIR" ]]; then
-    qdbus $DBUSREF setLabelText "Copying TPM state..." 2>/dev/null || true
+    echo "[3/4] Copying TPM state..."
     sudo cp -r "$TPM_DIR" "${EXPORT_DIR}/tpm"
-    qdbus $DBUSREF Set "" value $((++STEP)) 2>/dev/null || true
+    echo "      Done."
+else
+    echo "[3/4] No TPM state to copy, skipping."
 fi
+echo ""
 
 # Export and compress disk images
+DISK_COUNT=$(echo "$DISK_PATHS" | wc -w)
+DISK_NUM=0
+echo "[4/4] Compressing ${DISK_COUNT} disk image(s)..."
+echo ""
+
 for DISK in $DISK_PATHS; do
+    DISK_NUM=$((DISK_NUM + 1))
     DNAME=$(basename "$DISK")
-    qdbus $DBUSREF setLabelText "Compressing ${DNAME}...\n(this is the slow part)" 2>/dev/null || true
+    DSIZE=$(stat -c %s "$DISK" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "?")
+    echo "  ── Disk ${DISK_NUM}/${DISK_COUNT}: ${DNAME} (${DSIZE})"
+    echo "     Compressing with qemu-img (qcow2)..."
+    echo ""
 
-    sudo qemu-img convert -O qcow2 -c -p "$DISK" "${EXPORT_DIR}/${DNAME}" 2>&1 | \
-    while IFS= read -r line; do
-        # qemu-img -p outputs progress like (45.23/100%)
-        PCT=$(echo "$line" | grep -oP '[\d.]+(?=/100%)' | head -1 || true)
-        if [[ -n "$PCT" ]]; then
-            qdbus $DBUSREF setLabelText "Compressing ${DNAME}... ${PCT}%" 2>/dev/null || true
-        fi
-    done
+    # qemu-img -p writes progress directly to stdout as (XX.XX/100%)
+    # Use stdbuf to disable buffering so progress updates appear in real time
+    sudo stdbuf -oL qemu-img convert -O qcow2 -c -p "$DISK" "${EXPORT_DIR}/${DNAME}"
 
-    qdbus $DBUSREF Set "" value $((++STEP)) 2>/dev/null || true
+    echo ""
+    OUT_SIZE=$(stat -c %s "${EXPORT_DIR}/${DNAME}" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "?")
+    echo "     Done: ${DSIZE} -> ${OUT_SIZE} (compressed)"
+    echo ""
 done
 
 # Fix ownership so user can move the files
 sudo chown -R "$(id -u):$(id -g)" "${EXPORT_DIR}"
-
-qdbus $DBUSREF close 2>/dev/null || true
 
 # --- Write import script ---
 cat > "${EXPORT_DIR}/import-vm.sh" << 'IMPORT_SCRIPT'
@@ -224,5 +241,18 @@ IMPORT_SCRIPT
 chmod +x "${EXPORT_DIR}/import-vm.sh"
 
 # --- Summary ---
-FINAL_SIZE=$(dust -s -d0 "$EXPORT_DIR" 2>/dev/null || echo "?")
-info_dialog "Export complete!\n\nSaved to: ${EXPORT_DIR}\n\nContents:\n$(ls -lh "$EXPORT_DIR" | tail -n+2)\n\nTo import on a new machine, copy the folder and run:\n  ./import-vm.sh"
+echo "========================================"
+echo "  Export complete!"
+echo "========================================"
+echo ""
+echo "  Saved to: ${EXPORT_DIR}"
+echo ""
+echo "  Contents:"
+ls -lh "$EXPORT_DIR" | tail -n+2 | sed 's/^/    /'
+echo ""
+FINAL_SIZE=$(du -sh "$EXPORT_DIR" 2>/dev/null | cut -f1 || echo "?")
+echo "  Total size: ${FINAL_SIZE}"
+echo ""
+echo "  To import on a new machine, copy the folder and run:"
+echo "    ./import-vm.sh"
+echo ""
