@@ -17,6 +17,12 @@ import subprocess
 import sys
 import time
 
+# Force unbuffered output so logs appear immediately under systemd
+os.environ["PYTHONUNBUFFERED"] = "1"
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
 # --- Configuration ---
 SWIPE_THRESHOLD = 200       # pixels of mouse movement to trigger switch
 COOLDOWN = 0.3              # seconds between workspace switches
@@ -97,7 +103,7 @@ class DesktopTracker:
         if self.current is None or self.count is None:
             self.sync()
         if self.current is None or self.count is None:
-            print(f"DBus error: current={self.current}, count={self.count}", file=sys.stderr)
+            log(f"DBus error: current={self.current}, count={self.count}")
             return
         if self.current >= self.count:
             target = 1
@@ -112,7 +118,7 @@ class DesktopTracker:
         if self.current is None or self.count is None:
             self.sync()
         if self.current is None or self.count is None:
-            print(f"DBus error: current={self.current}, count={self.count}", file=sys.stderr)
+            log(f"DBus error: current={self.current}, count={self.count}")
             return
         if self.current <= 1:
             target = self.count
@@ -153,7 +159,7 @@ def remove_device(fd, fd_to_dev):
     dev = fd_to_dev.pop(fd, None)
     if dev is None:
         return
-    print(f"Removed device: {dev.name} ({dev.path})", file=sys.stderr)
+    log(f"Removed device: {dev.name} ({dev.path})")
     try:
         dev.ungrab()
     except OSError:
@@ -209,7 +215,7 @@ def scan_and_add_devices(fd_to_dev, dev_back_buttons, seen_paths=set()):
         # Skip keyboards, touchpads, and combo devices
         if is_keyboard_or_touchpad(dev):
             if path not in seen_paths:
-                print(f"Skipping non-mouse: {dev.name} ({dev.path})", file=sys.stderr)
+                log(f"Skipping non-mouse: {dev.name} ({dev.path})")
                 seen_paths.add(path)
             dev.close()
             continue
@@ -237,11 +243,11 @@ def scan_and_add_devices(fd_to_dev, dev_back_buttons, seen_paths=set()):
         fd_to_dev[dev.fd] = dev
         dev_back_buttons[dev.fd] = back_btn
         btn_name = ecodes.BTN.get(back_btn, str(back_btn))
-        print(f"Added device: {dev.name} ({dev.path}) back_btn={btn_name}({back_btn})", file=sys.stderr)
+        log(f"Added device: {dev.name} ({dev.path}) back_btn={btn_name}({back_btn})")
 
 
 def main():
-    print("Starting mouse-workspace-swipe (dbus-send)", file=sys.stderr)
+    log("Starting mouse-workspace-swipe (dbus-send)")
     ui = create_uinput()
     fd_to_dev = {}
     dev_back_buttons = {}  # fd -> back button code for that device
@@ -250,12 +256,13 @@ def main():
 
     scan_and_add_devices(fd_to_dev, dev_back_buttons)
     if not fd_to_dev:
-        print("No mouse with a back button found, waiting for one...", file=sys.stderr)
+        log("No mouse with a back button found, waiting for one...")
 
     back_held = False
     x_accum = 0
     y_accum = 0
     triggered = False
+    pending_direction = None  # 'left' or 'right' — latched when threshold crossed during cooldown
     last_switch = 0
     last_sync = time.time()
 
@@ -311,44 +318,56 @@ def main():
                     # Check if this is ANY back/side button on this device
                     if event.type == ecodes.EV_KEY and event.code in BACK_BUTTON_CODES:
                         if event.value == 1:  # pressed
+                            btn_name = ecodes.BTN.get(event.code, str(event.code))
+                            log(f"PRESS {btn_name}({event.code}) back_held={back_held}")
                             back_held = True
                             x_accum = 0
                             y_accum = 0
                             triggered = False
+                            pending_direction = None
                         elif event.value == 0:  # released
+                            btn_name = ecodes.BTN.get(event.code, str(event.code))
+                            log(f"RELEASE {btn_name}({event.code}) x={x_accum} triggered={triggered} pending={pending_direction}")
                             back_held = False
-                            if not triggered:
+                            if not triggered and pending_direction is None:
                                 # No swipe detected — toggle Overview
                                 toggle_overview()
-                                print("Back click → Overview", file=sys.stderr)
+                                log("Back click → Overview")
                             x_accum = 0
                             y_accum = 0
                             triggered = False
+                            pending_direction = None
                         continue
 
                     if back_held and event.type == ecodes.EV_REL:
-                        if event.code == ecodes.REL_X:
-                            x_accum += event.value
-                        elif event.code == ecodes.REL_Y:
-                            y_accum += event.value
+                        # Only accumulate movement if direction hasn't been latched yet
+                        if not triggered and pending_direction is None:
+                            if event.code == ecodes.REL_X:
+                                x_accum += event.value
+                            elif event.code == ecodes.REL_Y:
+                                y_accum += event.value
 
                         now = time.time()
-                        if not triggered and (now - last_switch) > COOLDOWN:
-                            # Re-sync if it's been a while since last sync
-                            # (catches keyboard shortcut desktop switches)
+
+                        # Latch direction as soon as threshold is crossed
+                        if not triggered and pending_direction is None:
+                            if x_accum > SWIPE_THRESHOLD:
+                                pending_direction = 'right'
+                            elif x_accum < -SWIPE_THRESHOLD:
+                                pending_direction = 'left'
+
+                        # Execute the switch (immediately or after cooldown expires)
+                        if not triggered and pending_direction and (now - last_switch) > COOLDOWN:
                             if (now - last_sync) > 2.0:
                                 desktop.sync()
                                 last_sync = now
-                            if x_accum > SWIPE_THRESHOLD:
+                            if pending_direction == 'right':
                                 desktop.switch_right()
-                                triggered = True
-                                last_switch = now
-                                print(f"Swipe right → desktop {desktop.current}", file=sys.stderr)
-                            elif x_accum < -SWIPE_THRESHOLD:
+                            else:
                                 desktop.switch_left()
-                                triggered = True
-                                last_switch = now
-                                print(f"Swipe left → desktop {desktop.current}", file=sys.stderr)
+                            triggered = True
+                            last_switch = now
+                            log(f"SWITCH {pending_direction} → desktop {desktop.current} (x_accum={x_accum})")
 
                         # Suppress mouse movement while back is held
                         if abs(x_accum) > 30 or abs(y_accum) > 30:
@@ -366,7 +385,7 @@ def main():
             except OSError:
                 pass
         ui.close()
-        print("Stopped.", file=sys.stderr)
+        log("Stopped.")
 
 
 if __name__ == "__main__":
