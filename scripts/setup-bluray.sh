@@ -39,15 +39,27 @@ echo ""
 echo "=== Configuring MakeMKV beta key ==="
 # MakeMKV requires a registration key for its libaacs emulation to work.
 # The free beta key is published at: https://forum.makemkv.com/forum/viewtopic.php?t=1053
-MAKEMKV_KEY="T-URt6MHxNy3HmfVojU8pE05WQ6HfgVI8S@HiIeNcWFim9rBgNlOdLFROSATCsWikcKW"
+# Auto-fetch the current key since it rotates every ~2 months.
+
+MAKEMKV_KEY=""
+echo "Fetching current MakeMKV beta key from forum..."
+FORUM_PAGE=$(wget -q --timeout=15 -O - "https://forum.makemkv.com/forum/viewtopic.php?t=1053" 2>/dev/null || true)
+if [ -n "$FORUM_PAGE" ]; then
+    MAKEMKV_KEY=$(echo "$FORUM_PAGE" | grep -oP 'T-[\w@]{40,}' | head -1)
+fi
+
+if [ -z "$MAKEMKV_KEY" ]; then
+    echo "Could not auto-fetch key. Using fallback key (may be expired)."
+    MAKEMKV_KEY="T-URt6MHxNy3HmfVojU8pE05WQ6HfgVI8S@HiIeNcWFim9rBgNlOdLFROSATCsWikcKW"
+else
+    echo "Fetched key: ${MAKEMKV_KEY:0:20}..."
+fi
 
 mkdir -p ~/.MakeMKV
 if [ -f ~/.MakeMKV/settings.conf ] && grep -q "app_Key" ~/.MakeMKV/settings.conf; then
-    # Update existing key
     sed -i "s|^app_Key = .*|app_Key = \"$MAKEMKV_KEY\"|" ~/.MakeMKV/settings.conf
     echo "Updated MakeMKV beta key."
 else
-    # Create or append key
     echo "app_Key = \"$MAKEMKV_KEY\"" >> ~/.MakeMKV/settings.conf
     echo "Installed MakeMKV beta key."
 fi
@@ -115,13 +127,21 @@ fi
 
 echo ""
 echo "=== Verifying libaacs symlink ==="
-# makemkv-libaacs should create this, but verify it
+# makemkv-libaacs should create this, but verify and fix if missing
 if [ -L /usr/lib/libaacs.so.0 ]; then
     target=$(readlink /usr/lib/libaacs.so.0)
     echo "libaacs.so.0 -> $target (OK)"
+elif [ -f /usr/lib/libmmbd.so.0 ]; then
+    echo "libaacs.so.0 symlink missing but libmmbd.so.0 exists — creating symlink..."
+    sudo ln -sf /usr/lib/libmmbd.so.0 /usr/lib/libaacs.so.0
+    echo "libaacs.so.0 -> libmmbd.so.0 (fixed)"
+elif [ -f /usr/lib/libaacs.so ]; then
+    echo "libaacs.so.0 symlink missing — creating from libaacs.so..."
+    sudo ln -sf /usr/lib/libaacs.so /usr/lib/libaacs.so.0
+    echo "libaacs.so.0 -> libaacs.so (fixed)"
 else
-    echo "WARNING: /usr/lib/libaacs.so.0 symlink missing."
-    echo "Try reinstalling makemkv-libaacs."
+    echo "WARNING: No libaacs or libmmbd library found."
+    echo "Try reinstalling makemkv-libaacs: yay -S makemkv-libaacs"
 fi
 
 echo ""
@@ -166,6 +186,26 @@ cat > ~/.local/bin/bluray-play << 'SCRIPTEOF'
 export LIBAACS_PATH=/usr/lib/libaacs.so.0
 JAVA_DIR=$(dirname "$(dirname "$(readlink -f /usr/bin/java)")")
 [ -d "$JAVA_DIR" ] && export JAVA_HOME="$JAVA_DIR"
+
+# Verify disc is present
+if [ ! -b /dev/sr0 ]; then
+    notify-send -i dialog-error "Blu-Ray Player" "No disc drive found at /dev/sr0" 2>/dev/null
+    echo "ERROR: /dev/sr0 not found"
+    exit 1
+fi
+
+# Ensure the drive is ready (eject/reload can help after sleep/resume)
+if ! blkid /dev/sr0 &>/dev/null; then
+    echo "Drive not ready, poking it..."
+    eject -t /dev/sr0 2>/dev/null  # close tray
+    sleep 2
+fi
+
+# Ensure MakeMKV libaacs override is in place
+if [ -f /usr/lib/libmmbd.so.0 ] && [ ! -e /usr/lib/libaacs.so.0 ]; then
+    echo "WARNING: libaacs.so.0 symlink missing — MakeMKV decryption may not work."
+    echo "Run: sudo ln -sf /usr/lib/libmmbd.so.0 /usr/lib/libaacs.so.0"
+fi
 
 # Use --no-bluray-menu to skip BD-J Java menus which often hang VLC.
 # Play the main title directly instead.
