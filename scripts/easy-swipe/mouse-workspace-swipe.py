@@ -263,8 +263,9 @@ def main():
     y_accum = 0
     triggered = False
     pending_direction = None  # 'left' or 'right' — latched when threshold crossed during cooldown
-    last_switch = 0
-    last_sync = time.time()
+    # Use monotonic clock for timers — wall clock can jump (NTP, DST) and freeze the cooldown gate.
+    last_switch = 0.0
+    last_sync = time.monotonic()
 
     try:
         while True:
@@ -295,7 +296,7 @@ def main():
                 scan_and_add_devices(fd_to_dev, dev_back_buttons)
                 # Periodically re-sync desktop state to catch external switches
                 desktop.sync()
-                last_sync = time.time()
+                last_sync = time.monotonic()
                 continue
 
             for fd in r:
@@ -347,7 +348,7 @@ def main():
                             elif event.code == ecodes.REL_Y:
                                 y_accum += event.value
 
-                        now = time.time()
+                        now = time.monotonic()
 
                         # Latch direction as soon as threshold is crossed
                         if not triggered and pending_direction is None:
