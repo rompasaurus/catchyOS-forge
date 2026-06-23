@@ -1,5 +1,28 @@
 command = /usr/bin/zsh
 
+# ─── Appearance (Catppuccin Mocha + MesloLGS Nerd Font) ──────
+# Font is installed by setup-zsh-theme.sh (ttf-meslo-nerd).
+theme = "Catppuccin Mocha"
+font-family = "MesloLGS Nerd Font"
+font-size = 12
+font-thicken = true
+
+# Subtle transparency + blur (blur honored on KDE/Hyprland)
+background-opacity = 0.92
+background-blur = true
+
+# Breathing room + cursor
+window-padding-x = 14
+window-padding-y = 10
+window-padding-balance = true
+cursor-style = block
+cursor-style-blink = true
+mouse-hide-while-typing = true
+
+# Slimmer chrome
+gtk-titlebar = false
+unfocused-split-opacity = 0.85
+
 # Tab switching with Ctrl+number
 keybind = ctrl+1=goto_tab:1
 keybind = ctrl+2=goto_tab:2
