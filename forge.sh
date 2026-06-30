@@ -69,12 +69,13 @@ show_menu() {
     echo "  16) Touchpad Gestures    (3-finger swipe → desktop actions)"
     echo "  17) Rounded Corners      (Round all 4 window corners)"
     echo "  18) Zsh Theme + Icons    (Starship Catppuccin Powerline + Nerd Font)"
+    echo "  19) Anki Flashcards       (Spaced-repetition learning app)"
     echo ""
     echo -e "  ${BOLD}── Batch ──${NC}"
-    echo "  19) All of the above"
+    echo "  20) All of the above"
     echo "   0) Exit"
     echo ""
-    read -rp "Choice [0-19]: " choice
+    read -rp "Choice [0-20]: " choice
     echo ""
 
     case "$choice" in
@@ -96,7 +97,8 @@ show_menu() {
         16) run_script "setup-touchpad-gestures.sh" ;;
         17) run_script "setup-rounded-corners.sh" ;;
         18) run_script "setup-zsh-theme.sh" ;;
-        19) run_all ;;
+        19) run_script "setup-anki.sh" ;;
+        20) run_all ;;
         0)  echo "Bye!"; exit 0 ;;
         *)  err "Invalid choice"; show_menu ;;
     esac
@@ -121,6 +123,7 @@ run_all() {
     run_script "setup-touchpad-gestures.sh"
     run_script "setup-rounded-corners.sh"
     run_script "setup-zsh-theme.sh"
+    run_script "setup-anki.sh"
     echo ""
     log "Full setup complete!"
     warn "Log out and back in for group changes (docker, input) to take effect."
@@ -156,6 +159,7 @@ for arg in "$@"; do
         --touchpad)  run_script "setup-touchpad-gestures.sh" ;;
         --rounded)   run_script "setup-rounded-corners.sh" ;;
         --theme)     run_script "setup-zsh-theme.sh" ;;
+        --anki)      run_script "setup-anki.sh" ;;
         --help|-h)
             echo "Usage: bash forge.sh [OPTIONS]"
             echo ""
@@ -179,6 +183,7 @@ for arg in "$@"; do
             echo "  --touchpad   3-finger touchpad gestures"
             echo "  --rounded    Round all 4 window corners (KWin effect)"
             echo "  --theme      Zsh prompt theme (Starship Catppuccin) + Nerd Font icons"
+            echo "  --anki       Anki spaced-repetition flashcards"
             echo "  --help       Show this help"
             echo ""
             echo "Run without arguments for interactive menu."
