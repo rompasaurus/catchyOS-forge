@@ -69,16 +69,27 @@ flatpak override --user --socket=session-bus "$APP_ID"       # clipboard, notifi
 flatpak override --user --device=all "$APP_ID"               # smartcard / USB redirect
 log "Permissions applied."
 
-# ── Step 6: fix missing icons (KDE host theme not visible in sandbox) ─────────
-# On KDE the host GTK icon theme is usually 'breeze-dark', which lives at
-# /usr/share/icons/breeze-dark. The flatpak sandbox can't see it by default, so
-# Remmina's toolbar/session icons render blank. Grant read access to host icon
-# themes so the sandbox can resolve whatever icon theme the host is using.
-info "[6/6] Exposing host icon themes to the sandbox (fixes blank icons)..."
-flatpak override --user --filesystem=/usr/share/icons:ro "$APP_ID"   # system icon themes (breeze, etc.)
-flatpak override --user --filesystem=xdg-data/icons:ro "$APP_ID"     # ~/.local/share/icons
-flatpak override --user --filesystem=/usr/share/themes:ro "$APP_ID"  # system GTK themes
-log "Host icon themes exposed."
+# ── Step 6: fix blank toolbar icons (KDE host theme not in sandbox) ───────────
+# On KDE the host GTK icon theme is usually 'breeze-dark'. The sandbox reads that
+# name from the host gtk settings but the theme itself isn't inside the runtime
+# (only Adwaita + hicolor are), so Remmina's toolbar icons render as blank
+# squares. NOTE: you cannot mount /usr/share/icons into a flatpak — Flatpak
+# refuses all host /usr paths ("Path /usr is reserved"). The working fix is to
+# copy the host icon theme(s) into ~/.local/share/icons, which the sandbox CAN
+# read. breeze-dark inherits from breeze + hicolor, so copy both.
+info "[6/6] Copying host icon theme into ~/.local/share/icons (fixes blank icons)..."
+flatpak override --user --filesystem=xdg-data/icons:ro "$APP_ID"
+ICON_THEME=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'" || true)
+ICON_THEME=${ICON_THEME:-breeze-dark}
+mkdir -p "$HOME/.local/share/icons"
+for t in "$ICON_THEME" breeze breeze-dark hicolor; do
+    if [[ -d "/usr/share/icons/$t" && ! -d "$HOME/.local/share/icons/$t" ]]; then
+        cp -a "/usr/share/icons/$t" "$HOME/.local/share/icons/"
+        gtk-update-icon-cache -q -f "$HOME/.local/share/icons/$t" 2>/dev/null || true
+        info "  copied icon theme: $t"
+    fi
+done
+log "Host icon themes copied into the sandbox-visible icons dir."
 
 echo ""
 log "Done. FULLY quit Remmina first (check the system tray → Quit), then launch:"
